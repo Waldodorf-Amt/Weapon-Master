@@ -549,7 +549,7 @@
     </section>
   </main>
 
-  <script defer src="https://code.jquery.com/jquery-3.7.1.minjsork.js"></script>
+  <script defer src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   <script defer src="jsork.js"></script>
 
   <script defer>
@@ -583,7 +583,7 @@
       requestAnimationFrame(() => {
         loadRecent();
         loadLeaderboard("Ebonmarch");
-        verify();
+        verifyJsork();
       });
     });
 
@@ -620,13 +620,13 @@
       });
     }
 
-    function verify() {
-  if (window.jsork && jsork.searchservice && jsork.searchservice.searchPlayer) {
-    setStatus("ready", "Ready · ORK search active");
-  } else {
-    setStatus("ready", "Ready · ORK search unavailable");
-  }
-}
+    function verifyJsork() {
+      if (window.jsork && jsork.searchservice && jsork.searchservice.searchPlayer) {
+        setStatus("ready", "Ready · ORK search active");
+      } else {
+        setStatus("ready", "Ready · ORK search unavailable");
+      }
+    }
 
     function showView(id) {
       document.querySelectorAll(".view").forEach(view => view.classList.remove("active"));
@@ -710,10 +710,10 @@
       }
 
       if (!window.jsork || !jsork.searchservice || !jsork.searchservice.searchPlayer) {
-  return [];
-}
+        return [];
+      }
 
-      const raw = await .searchservice.searchPlayer(query);
+      const raw = await jsork.searchservice.searchPlayer(query);
       const players = normalizeOrkPlayers(raw).slice(0, 12);
       playerSearchCache.set(key, players);
       return players;
@@ -991,7 +991,7 @@
         body: JSON.stringify(payload)
       });
 
-      const data = await responsejsork.json();
+      const data = await response.json();
       if (!data.ok) throw new Error(data.message || "Submit failed");
       return data;
     }
