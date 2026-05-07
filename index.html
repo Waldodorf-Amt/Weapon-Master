@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ebonmarch / Valkyrie Weapon Master Tracker</title>
+
   <style>
     :root {
       --bg: #0b0b0d;
@@ -136,6 +137,11 @@
       border-color: var(--silver);
     }
 
+    .btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
     .grid-main {
       display: grid;
       grid-template-columns: 1.15fr 0.85fr;
@@ -198,6 +204,7 @@
     }
 
     .field {
+      position: relative;
       display: grid;
       gap: 6px;
     }
@@ -235,7 +242,7 @@
     .bracket-card {
       border: 1px solid var(--border-soft);
       border-radius: 14px;
-      overflow: hidden;
+      overflow: visible;
       background: rgba(0,0,0,0.16);
     }
 
@@ -247,6 +254,7 @@
       padding: 12px 14px;
       border-bottom: 1px solid var(--border-soft);
       background: rgba(84,66,104,0.42);
+      border-radius: 14px 14px 0 0;
     }
 
     .optional-tag,
@@ -268,6 +276,55 @@
       grid-template-columns: repeat(5, 1fr);
       gap: 10px;
       padding: 14px;
+    }
+
+    .suggestions {
+      position: absolute;
+      top: calc(100% + 2px);
+      left: 0;
+      right: 0;
+      z-index: 50;
+      display: none;
+      max-height: 260px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #111014;
+      box-shadow: 0 16px 30px rgba(0,0,0,0.55);
+    }
+
+    .suggestions.open {
+      display: block;
+    }
+
+    .suggestion-item {
+      width: 100%;
+      border: 0;
+      border-bottom: 1px solid rgba(231,229,223,0.1);
+      border-radius: 0;
+      padding: 9px 10px;
+      color: var(--text);
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .suggestion-item:hover,
+    .suggestion-item.active {
+      background: rgba(84,66,104,0.55);
+    }
+
+    .suggestion-name {
+      display: block;
+      color: var(--silver);
+      font-weight: 700;
+    }
+
+    .suggestion-meta {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 0.8rem;
     }
 
     .submit-row {
@@ -346,6 +403,19 @@
       font-size: 0.9rem;
     }
 
+    .skeleton {
+      min-height: 78px;
+      border-radius: 14px;
+      background: linear-gradient(90deg, rgba(255,255,255,0.05), rgba(255,255,255,0.11), rgba(255,255,255,0.05));
+      background-size: 200% 100%;
+      animation: shimmer 1.2s infinite;
+    }
+
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
     @media (max-width: 980px) {
       .hero,
       .grid-main {
@@ -368,7 +438,7 @@
       </div>
       <div class="status">
         <span id="statusDot" class="dot"></span>
-        <span id="statusText">Loading...</span>
+        <span id="statusText">Loading page...</span>
       </div>
     </header>
 
@@ -386,7 +456,11 @@
             <p>Events are stored for two years. Leaderboards only count the rolling last 12 months.</p>
           </div>
           <div class="panel-body">
-            <div id="recentList" class="recent-list"></div>
+            <div id="recentList" class="recent-list">
+              <div class="skeleton"></div>
+              <div class="skeleton"></div>
+              <div class="skeleton"></div>
+            </div>
           </div>
         </div>
 
@@ -408,7 +482,7 @@
       <div class="panel">
         <div class="panel-head">
           <h2>Enter Tournament Results</h2>
-          <p>Single Short, Sword and Board, and Florentine are required. Open and Great are optional.</p>
+          <p>Single Short, Sword and Board, and Flow are required. Open and Greats are optional.</p>
         </div>
         <div class="panel-body">
           <div class="form-grid">
@@ -465,7 +539,9 @@
                   <th>5th</th>
                 </tr>
               </thead>
-              <tbody id="leaderBody"></tbody>
+              <tbody id="leaderBody">
+                <tr><td colspan="9">Loading...</td></tr>
+              </tbody>
             </table>
           </div>
         </div>
@@ -473,7 +549,10 @@
     </section>
   </main>
 
-  <script>
+  <script defer src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script defer src="jsork.js"></script>
+
+  <script defer>
     "use strict";
 
     const API_URL = "https://script.google.com/macros/s/AKfycbw-KyzU9ZOZ5wNwvltar0HzihSBgHomOTI4nlrk_1f_mNZbZ9PezOHBrqpQmzyk5IeN/exec";
@@ -486,27 +565,38 @@
       { key: "greats", name: "Greats", required: false }
     ];
 
-    const els = {
-      statusDot: document.getElementById("statusDot"),
-      statusText: document.getElementById("statusText"),
-      recentList: document.getElementById("recentList"),
-      brackets: document.getElementById("brackets"),
-      submitBtn: document.getElementById("submitBtn"),
-      submitMessage: document.getElementById("submitMessage"),
-      leaderBody: document.getElementById("leaderBody"),
-      leaderEbonmarch: document.getElementById("leaderEbonmarch"),
-      leaderValkyrie: document.getElementById("leaderValkyrie")
-    };
+    const leaderboardCache = {};
+    const playerSearchCache = new Map();
+
+    const els = {};
 
     let currentLeaderLevel = "Ebonmarch";
 
-    init();
-
-    function init() {
+    window.addEventListener("DOMContentLoaded", () => {
+      cacheEls();
       buildBracketInputs();
       bindEvents();
-      loadRecent();
-      loadLeaderboard("Ebonmarch");
+      setStatus("loading", "Page ready");
+    });
+
+    window.addEventListener("load", () => {
+      requestAnimationFrame(() => {
+        loadRecent();
+        loadLeaderboard("Ebonmarch");
+        verifyJsork();
+      });
+    });
+
+    function cacheEls() {
+      els.statusDot = document.getElementById("statusDot");
+      els.statusText = document.getElementById("statusText");
+      els.recentList = document.getElementById("recentList");
+      els.brackets = document.getElementById("brackets");
+      els.submitBtn = document.getElementById("submitBtn");
+      els.submitMessage = document.getElementById("submitMessage");
+      els.leaderBody = document.getElementById("leaderBody");
+      els.leaderEbonmarch = document.getElementById("leaderEbonmarch");
+      els.leaderValkyrie = document.getElementById("leaderValkyrie");
     }
 
     function bindEvents() {
@@ -522,9 +612,20 @@
       });
 
       els.submitBtn.addEventListener("click", submitTournament);
-
       els.leaderEbonmarch.addEventListener("click", () => loadLeaderboard("Ebonmarch"));
       els.leaderValkyrie.addEventListener("click", () => loadLeaderboard("Valkyrie"));
+
+      document.addEventListener("click", event => {
+        if (!event.target.closest(".field")) closeAllSuggestions();
+      });
+    }
+
+    function verifyJsork() {
+      if (window.jsork && jsork.searchservice && jsork.searchservice.searchPlayer) {
+        setStatus("ready", "Ready · ORK search active");
+      } else {
+        setStatus("ready", "Ready · ORK search unavailable");
+      }
     }
 
     function showView(id) {
@@ -537,33 +638,175 @@
     }
 
     function buildBracketInputs() {
-      els.brackets.innerHTML = BRACKETS.map(bracket => `
-        <div class="bracket-card" data-bracket="${bracket.key}">
+      const fragment = document.createDocumentFragment();
+
+      BRACKETS.forEach(bracket => {
+        const card = document.createElement("div");
+        card.className = "bracket-card";
+        card.dataset.bracket = bracket.key;
+
+        card.innerHTML = `
           <div class="bracket-head">
             <h3>${escapeHtml(bracket.name)}</h3>
             <span class="${bracket.required ? "required-tag" : "optional-tag"}">${bracket.required ? "Required" : "Optional"}</span>
           </div>
           <div class="placements">
             ${[1,2,3,4,5].map(place => `
-              <div class="field">
+              <div class="field player-field">
                 <label>${place}${suffix(place)} Place</label>
-                <input type="text" data-place="${place}" placeholder="Player name" />
+                <input type="text" data-player-input="true" data-place="${place}" placeholder="Player name" autocomplete="off" />
+                <div class="suggestions"></div>
               </div>
             `).join("")}
           </div>
-        </div>
-      `).join("");
+        `;
+
+        fragment.appendChild(card);
+      });
+
+      els.brackets.innerHTML = "";
+      els.brackets.appendChild(fragment);
+
+      document.querySelectorAll("input[data-player-input]").forEach(input => {
+        attachPlayerAutocomplete(input);
+      });
+    }
+
+    function attachPlayerAutocomplete(input) {
+      const field = input.closest(".field");
+      const box = field.querySelector(".suggestions");
+      const debounced = debounce(async () => {
+        const query = input.value.trim();
+
+        if (query.length < 2) {
+          box.classList.remove("open");
+          box.innerHTML = "";
+          return;
+        }
+
+        box.classList.add("open");
+        box.innerHTML = `<button class="suggestion-item" type="button"><span class="suggestion-name">Searching ORK...</span></button>`;
+
+        try {
+          const players = await searchOrkPlayers(query);
+          renderSuggestions(input, box, players);
+        } catch (err) {
+          box.innerHTML = `<button class="suggestion-item" type="button"><span class="suggestion-name">No ORK results available</span><span class="suggestion-meta">Manual entry is still allowed</span></button>`;
+        }
+      }, 280);
+
+      input.addEventListener("input", debounced);
+      input.addEventListener("focus", () => {
+        if (box.innerHTML.trim()) box.classList.add("open");
+      });
+      input.addEventListener("keydown", event => handleSuggestionKeys(event, input, box));
+    }
+
+    async function searchOrkPlayers(query) {
+      const key = query.toLowerCase();
+
+      if (playerSearchCache.has(key)) {
+        return playerSearchCache.get(key);
+      }
+
+      if (!window.jsork || !jsork.searchservice || !jsork.searchservice.searchPlayer) {
+        return [];
+      }
+
+      const raw = await jsork.searchservice.searchPlayer(query);
+      const players = normalizeOrkPlayers(raw).slice(0, 12);
+      playerSearchCache.set(key, players);
+      return players;
+    }
+
+    function normalizeOrkPlayers(raw) {
+      if (!Array.isArray(raw)) return [];
+
+      return raw.map(item => {
+        const name = item.Persona || item.persona || item.Name || item.name || item.Player || item.player || item.label || "";
+        const kingdom = item.Kingdom || item.kingdom || item.KingdomName || item.kingdom_name || "";
+        const park = item.Park || item.park || item.ParkName || item.park_name || "";
+
+        return {
+          name: String(name || "").trim(),
+          kingdom: String(kingdom || "").trim(),
+          park: String(park || "").trim()
+        };
+      }).filter(player => player.name);
+    }
+
+    function renderSuggestions(input, box, players) {
+      if (!players.length) {
+        box.innerHTML = `<button class="suggestion-item" type="button"><span class="suggestion-name">No matches found</span><span class="suggestion-meta">Manual entry is allowed</span></button>`;
+        return;
+      }
+
+      const fragment = document.createDocumentFragment();
+
+      players.forEach(player => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "suggestion-item";
+        btn.innerHTML = `
+          <span class="suggestion-name">${escapeHtml(player.name)}</span>
+          <span class="suggestion-meta">${escapeHtml([player.park, player.kingdom].filter(Boolean).join(" · "))}</span>
+        `;
+        btn.addEventListener("click", () => {
+          input.value = player.name;
+          box.classList.remove("open");
+          box.innerHTML = "";
+        });
+        fragment.appendChild(btn);
+      });
+
+      box.innerHTML = "";
+      box.appendChild(fragment);
+      box.classList.add("open");
+    }
+
+    function handleSuggestionKeys(event, input, box) {
+      const items = Array.from(box.querySelectorAll(".suggestion-item"));
+      if (!items.length || !box.classList.contains("open")) return;
+
+      const currentIndex = items.findIndex(item => item.classList.contains("active"));
+
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        const nextIndex = currentIndex < items.length - 1 ? currentIndex + 1 : 0;
+        setActiveSuggestion(items, nextIndex);
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        const nextIndex = currentIndex > 0 ? currentIndex - 1 : items.length - 1;
+        setActiveSuggestion(items, nextIndex);
+      }
+
+      if (event.key === "Enter" && currentIndex >= 0) {
+        event.preventDefault();
+        items[currentIndex].click();
+      }
+
+      if (event.key === "Escape") {
+        box.classList.remove("open");
+      }
+    }
+
+    function setActiveSuggestion(items, index) {
+      items.forEach(item => item.classList.remove("active"));
+      items[index].classList.add("active");
+      items[index].scrollIntoView({ block: "nearest" });
+    }
+
+    function closeAllSuggestions() {
+      document.querySelectorAll(".suggestions.open").forEach(box => box.classList.remove("open"));
     }
 
     async function loadRecent() {
-      setStatus("loading", "Loading recent...");
-
       try {
         const data = await jsonp(API_URL, { action: "recent" });
         renderRecent(data.events || []);
-        setStatus("ready", "Ready");
       } catch (err) {
-        setStatus("error", "Recent load failed");
         els.recentList.innerHTML = `<div class="note">Could not load recent tournaments.</div>`;
       }
     }
@@ -574,24 +817,40 @@
         return;
       }
 
-      els.recentList.innerHTML = events.slice(0, 3).map(event => `
-        <div class="event-card">
+      const fragment = document.createDocumentFragment();
+
+      events.slice(0, 3).forEach(event => {
+        const card = document.createElement("div");
+        card.className = "event-card";
+        card.innerHTML = `
           <strong>${escapeHtml(displayLevel(event.level))} · ${escapeHtml(event.location || "Unknown Location")}</strong>
           <span>${escapeHtml(event.eventDate || "No date listed")}</span>
           <span>${escapeHtml(String(event.bracketCount || 0))} brackets entered</span>
-        </div>
-      `).join("");
+        `;
+        fragment.appendChild(card);
+      });
+
+      els.recentList.innerHTML = "";
+      els.recentList.appendChild(fragment);
     }
 
     async function loadLeaderboard(level) {
       currentLeaderLevel = level;
       els.leaderEbonmarch.classList.toggle("primary", level === "Ebonmarch");
       els.leaderValkyrie.classList.toggle("primary", level === "Valkyrie");
+
+      if (leaderboardCache[level]) {
+        renderLeaderboard(leaderboardCache[level]);
+        return;
+      }
+
       els.leaderBody.innerHTML = `<tr><td colspan="9">Loading...</td></tr>`;
 
       try {
         const data = await jsonp(API_URL, { action: "leaderboard", level });
-        renderLeaderboard((data.players || []).slice(0, 10));
+        const players = (data.players || []).slice(0, 10);
+        leaderboardCache[level] = players;
+        renderLeaderboard(players);
       } catch (err) {
         els.leaderBody.innerHTML = `<tr><td colspan="9">Could not load leaderboard.</td></tr>`;
       }
@@ -603,8 +862,11 @@
         return;
       }
 
-      els.leaderBody.innerHTML = players.map(player => `
-        <tr>
+      const fragment = document.createDocumentFragment();
+
+      players.forEach(player => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
           <td>${escapeHtml(player.rank)}</td>
           <td>${escapeHtml(player.player)}</td>
           <td>${escapeHtml(player.totalPoints)}</td>
@@ -614,15 +876,18 @@
           <td>${escapeHtml(player.third)}</td>
           <td>${escapeHtml(player.fourth)}</td>
           <td>${escapeHtml(player.fifth)}</td>
-        </tr>
-      `).join("");
+        `;
+        fragment.appendChild(row);
+      });
+
+      els.leaderBody.innerHTML = "";
+      els.leaderBody.appendChild(fragment);
     }
 
     async function submitTournament() {
       clearMessage();
 
-      const levelValue = document.getElementById("level").value;
-      const level = levelValue === "Ebonmarch" ? "Ebonmarch" : "Valkyrie";
+      const level = document.getElementById("level").value === "Ebonmarch" ? "Ebonmarch" : "Valkyrie";
       const eventDate = document.getElementById("eventDate").value;
       const location = document.getElementById("location").value.trim();
       const brackets = collectBrackets();
@@ -651,13 +916,15 @@
 
       try {
         await postJson(API_URL, payload);
+        leaderboardCache.Ebonmarch = null;
+        leaderboardCache.Valkyrie = null;
         showMessage("Tournament submitted successfully.", "good");
         clearEntryForm();
         await loadRecent();
         await loadLeaderboard(level);
         showView("home");
       } catch (err) {
-        showMessage("Submit failed. Apps Script may need POST permission or a redeploy.", "error");
+        showMessage("Submit failed. Check Apps Script deployment permissions.", "error");
       } finally {
         els.submitBtn.disabled = false;
       }
@@ -682,6 +949,7 @@
       document.getElementById("eventDate").value = "";
       document.getElementById("location").value = "";
       els.brackets.querySelectorAll("input").forEach(input => input.value = "");
+      closeAllSuggestions();
     }
 
     function jsonp(url, params = {}) {
@@ -751,6 +1019,14 @@
       if (n === 2) return "nd";
       if (n === 3) return "rd";
       return "th";
+    }
+
+    function debounce(fn, delay) {
+      let timeout;
+      return (...args) => {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => fn(...args), delay);
+      };
     }
 
     function escapeHtml(value) {
