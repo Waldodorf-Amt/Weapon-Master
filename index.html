@@ -549,8 +549,8 @@
     </section>
   </main>
 
-  <script defer src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-  <script defer src=".js"></script>
+  <script defer src="https://code.jquery.com/jquery-3.7.1.minjsork.js"></script>
+  <script defer src="jsork.js"></script>
 
   <script defer>
     "use strict";
@@ -991,7 +991,7 @@
         body: JSON.stringify(payload)
       });
 
-      const data = await response.json();
+      const data = await responsejsork.json();
       if (!data.ok) throw new Error(data.message || "Submit failed");
       return data;
     }
