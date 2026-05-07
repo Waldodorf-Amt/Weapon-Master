@@ -550,7 +550,7 @@
   </main>
 
   <script defer src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-  <script defer src="jsork.js"></script>
+  <script defer src=".js"></script>
 
   <script defer>
     "use strict";
@@ -583,7 +583,7 @@
       requestAnimationFrame(() => {
         loadRecent();
         loadLeaderboard("Ebonmarch");
-        verifyJsork();
+        verify();
       });
     });
 
@@ -620,8 +620,8 @@
       });
     }
 
-    function verifyJsork() {
-      if (window.jsork && jsork.searchservice && jsork.searchservice.searchPlayer) {
+    function verify() {
+      if (window. && .searchservice && .searchservice.searchPlayer) {
         setStatus("ready", "Ready · ORK search active");
       } else {
         setStatus("ready", "Ready · ORK search unavailable");
@@ -709,11 +709,11 @@
         return playerSearchCache.get(key);
       }
 
-      if (!window.jsork || !jsork.searchservice || !jsork.searchservice.searchPlayer) {
+      if (!window. || !.searchservice || !.searchservice.searchPlayer) {
         return [];
       }
 
-      const raw = await jsork.searchservice.searchPlayer(query);
+      const raw = await .searchservice.searchPlayer(query);
       const players = normalizeOrkPlayers(raw).slice(0, 12);
       playerSearchCache.set(key, players);
       return players;
