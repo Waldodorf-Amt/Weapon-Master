@@ -709,9 +709,9 @@
         return playerSearchCache.get(key);
       }
 
-      if (!window. || !.searchservice || !.searchservice.searchPlayer) {
-        return [];
-      }
+      if (!window.jsork || !jsork.searchservice || !jsork.searchservice.searchPlayer) {
+  return [];
+}
 
       const raw = await .searchservice.searchPlayer(query);
       const players = normalizeOrkPlayers(raw).slice(0, 12);
