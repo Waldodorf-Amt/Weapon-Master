@@ -621,12 +621,12 @@
     }
 
     function verify() {
-      if (window. && .searchservice && .searchservice.searchPlayer) {
-        setStatus("ready", "Ready · ORK search active");
-      } else {
-        setStatus("ready", "Ready · ORK search unavailable");
-      }
-    }
+  if (window.jsork && jsork.searchservice && jsork.searchservice.searchPlayer) {
+    setStatus("ready", "Ready · ORK search active");
+  } else {
+    setStatus("ready", "Ready · ORK search unavailable");
+  }
+}
 
     function showView(id) {
       document.querySelectorAll(".view").forEach(view => view.classList.remove("active"));
