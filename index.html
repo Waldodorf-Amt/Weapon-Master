@@ -333,6 +333,7 @@
       gap: 12px;
       align-items: center;
       margin-top: 16px;
+      flex-wrap: wrap;
     }
 
     .message {
@@ -409,6 +410,55 @@
       background: linear-gradient(90deg, rgba(255,255,255,0.05), rgba(255,255,255,0.11), rgba(255,255,255,0.05));
       background-size: 200% 100%;
       animation: shimmer 1.2s infinite;
+    }
+
+    .final-results-panel {
+      margin-top: 16px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      background: rgba(0,0,0,0.18);
+      display: none;
+    }
+
+    .final-results-panel.open {
+      display: block;
+    }
+
+    .final-results-head {
+      padding: 12px 14px;
+      background: rgba(84,66,104,0.42);
+      border-bottom: 1px solid var(--border-soft);
+    }
+
+    .final-results-body {
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .tiebreaker-box {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      background: rgba(84,66,104,0.25);
+      display: none;
+      gap: 10px;
+    }
+
+    .tiebreaker-box.open {
+      display: grid;
+    }
+
+    .tiebreaker-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .tiebreaker-choice.active {
+      background: rgba(84, 66, 104, 0.95);
+      border-color: var(--silver);
     }
 
     @keyframes shimmer {
@@ -505,8 +555,40 @@
 
           <div id="brackets" class="brackets"></div>
 
+          <div id="finalResultsPanel" class="final-results-panel">
+            <div class="final-results-head">
+              <h3>Final Tournament Results Preview</h3>
+              <p class="note">These are tallied from all brackets before submission.</p>
+            </div>
+            <div class="final-results-body">
+              <div id="tiebreakerBox" class="tiebreaker-box"></div>
+              <div class="leader-table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Rank</th>
+                      <th>Player</th>
+                      <th>Points</th>
+                      <th>1st</th>
+                      <th>2nd</th>
+                      <th>3rd</th>
+                      <th>4th</th>
+                      <th>5th</th>
+                    </tr>
+                  </thead>
+                  <tbody id="finalResultsBody">
+                    <tr><td colspan="8">Enter bracket results to preview final standings.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
           <div class="submit-row">
-            <button id="submitBtn" class="btn primary" type="button">Submit Tournament</button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button id="previewBtn" class="btn" type="button">Preview Final Results</button>
+              <button id="submitBtn" class="btn primary" type="button">Submit Tournament</button>
+            </div>
             <div id="submitMessage" class="message"></div>
           </div>
         </div>
@@ -565,12 +647,23 @@
       { key: "greats", name: "Greats", required: false }
     ];
 
+    const POINTS_BY_PLACE = {
+      place1: 4,
+      place2: 2,
+      place3: 1,
+      place4: 0.5,
+      place5: 0.5
+    };
+
     const leaderboardCache = {};
     const playerSearchCache = new Map();
 
     const els = {};
 
     let currentLeaderLevel = "Ebonmarch";
+    let currentFinalResults = [];
+    let currentFinalTie = null;
+    let selectedTieWinner = "";
 
     window.addEventListener("DOMContentLoaded", () => {
       cacheEls();
@@ -592,11 +685,15 @@
       els.statusText = document.getElementById("statusText");
       els.recentList = document.getElementById("recentList");
       els.brackets = document.getElementById("brackets");
+      els.previewBtn = document.getElementById("previewBtn");
       els.submitBtn = document.getElementById("submitBtn");
       els.submitMessage = document.getElementById("submitMessage");
       els.leaderBody = document.getElementById("leaderBody");
       els.leaderEbonmarch = document.getElementById("leaderEbonmarch");
       els.leaderValkyrie = document.getElementById("leaderValkyrie");
+      els.finalResultsPanel = document.getElementById("finalResultsPanel");
+      els.finalResultsBody = document.getElementById("finalResultsBody");
+      els.tiebreakerBox = document.getElementById("tiebreakerBox");
     }
 
     function bindEvents() {
@@ -611,6 +708,7 @@
         });
       });
 
+      els.previewBtn.addEventListener("click", previewFinalResults);
       els.submitBtn.addEventListener("click", submitTournament);
       els.leaderEbonmarch.addEventListener("click", () => loadLeaderboard("Ebonmarch"));
       els.leaderValkyrie.addEventListener("click", () => loadLeaderboard("Valkyrie"));
@@ -669,6 +767,7 @@
 
       document.querySelectorAll("input[data-player-input]").forEach(input => {
         attachPlayerAutocomplete(input);
+        input.addEventListener("input", resetFinalPreview);
       });
     }
 
@@ -753,6 +852,7 @@
         `;
         btn.addEventListener("click", () => {
           input.value = player.name;
+          resetFinalPreview();
           box.classList.remove("open");
           box.innerHTML = "";
         });
@@ -884,50 +984,42 @@
       els.leaderBody.appendChild(fragment);
     }
 
-    async function submitTournament() {
+    function previewFinalResults() {
       clearMessage();
 
-      const level = document.getElementById("level").value === "Ebonmarch" ? "Ebonmarch" : "Valkyrie";
-      const eventDate = document.getElementById("eventDate").value;
-      const location = document.getElementById("location").value.trim();
-      const brackets = collectBrackets();
-
-      if (!eventDate) return showMessage("Event date is required.", "error");
-      if (!location) return showMessage("Location is required.", "error");
-
-      for (const bracket of BRACKETS.filter(b => b.required)) {
-        const found = brackets.find(b => b.bracket === bracket.name);
-        if (!found) return showMessage(`${bracket.name} is required.`, "error");
-        if (!found.place1 || !found.place2 || !found.place3) {
-          return showMessage(`${bracket.name} needs at least 1st, 2nd, and 3rd place.`, "error");
-        }
-      }
-
-      const payload = {
-        action: "submit",
-        level,
-        eventDate,
-        location,
-        brackets
-      };
-
-      els.submitBtn.disabled = true;
-      showMessage("Submitting tournament...", "");
-
+      let brackets;
       try {
-        await postJson(API_URL, payload);
-        leaderboardCache.Ebonmarch = null;
-        leaderboardCache.Valkyrie = null;
-        showMessage("Tournament submitted successfully.", "good");
-        clearEntryForm();
-        await loadRecent();
-        await loadLeaderboard(level);
-        showView("home");
+        brackets = collectBrackets();
+        validateTournamentInput(brackets);
       } catch (err) {
-        showMessage("Submit failed. Check Apps Script deployment permissions.", "error");
-      } finally {
-        els.submitBtn.disabled = false;
+        return showMessage(err.message, "error");
       }
+
+      currentFinalResults = buildFinalResultsFromBrackets(brackets);
+      currentFinalTie = findFinalResultTie(currentFinalResults);
+      selectedTieWinner = "";
+
+      els.finalResultsPanel.classList.add("open");
+
+      if (currentFinalTie) {
+        renderTiebreakerBox(currentFinalTie);
+        renderFinalResults(currentFinalResults, currentFinalTie.position);
+        showMessage(`Tiebreaker needed for final ${currentFinalTie.position}${suffix(currentFinalTie.position)} place.`, "");
+      } else {
+        els.tiebreakerBox.classList.remove("open");
+        els.tiebreakerBox.innerHTML = "";
+        renderFinalResults(currentFinalResults);
+        showMessage("Final results preview ready. No tiebreaker needed.", "good");
+      }
+    }
+
+    function resetFinalPreview() {
+      currentFinalResults = [];
+      currentFinalTie = null;
+      selectedTieWinner = "";
+      els.finalResultsPanel.classList.remove("open");
+      els.tiebreakerBox.classList.remove("open");
+      els.tiebreakerBox.innerHTML = "";
     }
 
     function collectBrackets() {
@@ -945,11 +1037,254 @@
       }).filter(Boolean);
     }
 
+    function validateTournamentInput(brackets) {
+      const eventDate = document.getElementById("eventDate").value;
+      const location = document.getElementById("location").value.trim();
+
+      if (!eventDate) throw new Error("Event date is required.");
+      if (!location) throw new Error("Location is required.");
+
+      for (const bracket of BRACKETS.filter(b => b.required)) {
+        const found = brackets.find(b => b.bracket === bracket.name);
+        if (!found) throw new Error(`${bracket.name} is required.`);
+        if (!found.place1 || !found.place2 || !found.place3) {
+          throw new Error(`${bracket.name} needs at least 1st, 2nd, and 3rd place.`);
+        }
+      }
+    }
+
+    function buildFinalResultsFromBrackets(brackets) {
+      const totals = new Map();
+
+      brackets.forEach(bracket => {
+        Object.entries(POINTS_BY_PLACE).forEach(([placeKey, points]) => {
+          const player = String(bracket[placeKey] || "").trim();
+          if (!player) return;
+
+          const key = player.toLowerCase();
+
+          if (!totals.has(key)) {
+            totals.set(key, {
+              player,
+              totalPoints: 0,
+              first: 0,
+              second: 0,
+              third: 0,
+              fourth: 0,
+              fifth: 0
+            });
+          }
+
+          const record = totals.get(key);
+          record.totalPoints += points;
+
+          if (placeKey === "place1") record.first++;
+          if (placeKey === "place2") record.second++;
+          if (placeKey === "place3") record.third++;
+          if (placeKey === "place4") record.fourth++;
+          if (placeKey === "place5") record.fifth++;
+        });
+      });
+
+      return Array.from(totals.values())
+        .sort((a, b) => {
+          if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
+          if (b.first !== a.first) return b.first - a.first;
+          if (b.second !== a.second) return b.second - a.second;
+          if (b.third !== a.third) return b.third - a.third;
+          return a.player.localeCompare(b.player);
+        })
+        .map((player, index) => ({
+          ...player,
+          rank: index + 1
+        }));
+    }
+
+    function findFinalResultTie(results) {
+      for (let index = 0; index < Math.min(results.length, 4); index++) {
+        const points = results[index].totalPoints;
+        const tiedPlayers = results.filter(player => player.totalPoints === points);
+
+        const tiedIndexes = tiedPlayers.map(player => results.findIndex(row => row.player === player.player));
+        const tieTouchesThisPosition = tiedIndexes.includes(index);
+
+        if (tiedPlayers.length > 1 && tieTouchesThisPosition) {
+          return {
+            position: index + 1,
+            points,
+            players: tiedPlayers
+          };
+        }
+      }
+
+      return null;
+    }
+
+    function renderTiebreakerBox(tie) {
+      els.tiebreakerBox.classList.add("open");
+
+      els.tiebreakerBox.innerHTML = `
+        <h3>Final ${tie.position}${suffix(tie.position)} Place Tiebreaker</h3>
+        <div class="note">
+          ${tie.players.length} players are tied at ${tie.points} points.
+          Select the tiebreaker winner. The remaining tied player or players shift down from this position only.
+        </div>
+        <div class="tiebreaker-options">
+          ${tie.players.map(player => `
+            <button class="btn tiebreaker-choice" type="button" data-tie-winner="${escapeHtml(player.player)}">
+              ${escapeHtml(player.player)}
+            </button>
+          `).join("")}
+        </div>
+      `;
+
+      els.tiebreakerBox.querySelectorAll("[data-tie-winner]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          selectedTieWinner = btn.dataset.tieWinner;
+
+          els.tiebreakerBox.querySelectorAll(".tiebreaker-choice").forEach(choice => {
+            choice.classList.toggle("active", choice === btn);
+          });
+
+          const resolved = resolveFinalTie(currentFinalResults, currentFinalTie, selectedTieWinner);
+          currentFinalResults = resolved;
+          currentFinalTie = null;
+
+          els.tiebreakerBox.classList.remove("open");
+          els.tiebreakerBox.innerHTML = "";
+          renderFinalResults(currentFinalResults);
+          showMessage("Tiebreaker resolved. Final results are ready to submit.", "good");
+        });
+      });
+    }
+
+    function resolveFinalTie(results, tie, winnerName) {
+      const winnerLower = String(winnerName || "").trim().toLowerCase();
+      const tiedPlayerNames = new Set(tie.players.map(player => player.player.toLowerCase()));
+
+      const beforeTie = results.filter((player, index) => {
+        return index < tie.position - 1 && !tiedPlayerNames.has(player.player.toLowerCase());
+      });
+
+      const tiedPlayers = tie.players.slice();
+      const winner = tiedPlayers.find(player => player.player.toLowerCase() === winnerLower);
+
+      if (!winner) {
+        throw new Error("Tiebreaker winner must be one of the tied players.");
+      }
+
+      const losers = tiedPlayers.filter(player => player.player.toLowerCase() !== winnerLower);
+
+      const afterTie = results.filter(player => {
+        return !tiedPlayerNames.has(player.player.toLowerCase()) &&
+          !beforeTie.some(before => before.player.toLowerCase() === player.player.toLowerCase());
+      });
+
+      return [
+        ...beforeTie,
+        winner,
+        ...losers,
+        ...afterTie
+      ].map((player, index) => ({
+        ...player,
+        rank: index + 1
+      }));
+    }
+
+    function renderFinalResults(results, tiePosition = null) {
+      if (!results.length) {
+        els.finalResultsBody.innerHTML = `<tr><td colspan="8">No final results to display.</td></tr>`;
+        return;
+      }
+
+      const fragment = document.createDocumentFragment();
+
+      results.forEach(player => {
+        const row = document.createElement("tr");
+        const tiedMarker = tiePosition && player.rank === tiePosition ? " ⚔" : "";
+
+        row.innerHTML = `
+          <td>${escapeHtml(player.rank)}${tiedMarker}</td>
+          <td>${escapeHtml(player.player)}</td>
+          <td>${escapeHtml(formatPoints(player.totalPoints))}</td>
+          <td>${escapeHtml(player.first)}</td>
+          <td>${escapeHtml(player.second)}</td>
+          <td>${escapeHtml(player.third)}</td>
+          <td>${escapeHtml(player.fourth)}</td>
+          <td>${escapeHtml(player.fifth)}</td>
+        `;
+
+        fragment.appendChild(row);
+      });
+
+      els.finalResultsBody.innerHTML = "";
+      els.finalResultsBody.appendChild(fragment);
+    }
+
+    async function submitTournament() {
+      clearMessage();
+
+      const level = document.getElementById("level").value === "Ebonmarch" ? "Ebonmarch" : "Valkyrie";
+      const eventDate = document.getElementById("eventDate").value;
+      const location = document.getElementById("location").value.trim();
+
+      let brackets;
+
+      try {
+        brackets = collectBrackets();
+        validateTournamentInput(brackets);
+      } catch (err) {
+        return showMessage(err.message, "error");
+      }
+
+      if (!currentFinalResults.length) {
+        currentFinalResults = buildFinalResultsFromBrackets(brackets);
+        currentFinalTie = findFinalResultTie(currentFinalResults);
+      }
+
+      if (currentFinalTie) {
+        els.finalResultsPanel.classList.add("open");
+        renderTiebreakerBox(currentFinalTie);
+        renderFinalResults(currentFinalResults, currentFinalTie.position);
+        return showMessage(`Resolve the final ${currentFinalTie.position}${suffix(currentFinalTie.position)} place tiebreaker before submitting.`, "error");
+      }
+
+      const payload = {
+        action: "submit",
+        level,
+        eventDate,
+        location,
+        brackets,
+        finalResults: currentFinalResults
+      };
+
+      els.submitBtn.disabled = true;
+      els.previewBtn.disabled = true;
+      showMessage("Submitting tournament...", "");
+
+      try {
+        await postJson(API_URL, payload);
+        leaderboardCache.Ebonmarch = null;
+        leaderboardCache.Valkyrie = null;
+        showMessage("Tournament submitted successfully.", "good");
+        clearEntryForm();
+        await loadRecent();
+        await loadLeaderboard(level);
+        showView("home");
+      } catch (err) {
+        showMessage("Submit failed. Check Apps Script deployment permissions.", "error");
+      } finally {
+        els.submitBtn.disabled = false;
+        els.previewBtn.disabled = false;
+      }
+    }
+
     function clearEntryForm() {
       document.getElementById("eventDate").value = "";
       document.getElementById("location").value = "";
       els.brackets.querySelectorAll("input").forEach(input => input.value = "");
       closeAllSuggestions();
+      resetFinalPreview();
     }
 
     function jsonp(url, params = {}) {
@@ -1019,6 +1354,11 @@
       if (n === 2) return "nd";
       if (n === 3) return "rd";
       return "th";
+    }
+
+    function formatPoints(points) {
+      const num = Number(points || 0);
+      return Number.isInteger(num) ? String(num) : String(num.toFixed(1));
     }
 
     function debounce(fn, delay) {
