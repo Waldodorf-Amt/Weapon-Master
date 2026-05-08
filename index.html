@@ -196,6 +196,37 @@
       margin-top: 4px;
     }
 
+    .recent-placements {
+      display: grid;
+      gap: 4px;
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border-soft);
+    }
+
+    .recent-placement-row {
+      display: grid;
+      grid-template-columns: 70px 1fr 50px;
+      gap: 10px;
+      align-items: center;
+      font-size: 0.98rem;
+    }
+
+    .recent-place {
+      color: var(--silver);
+      font-weight: 700;
+    }
+
+    .recent-player {
+      color: var(--text);
+    }
+
+    .recent-points {
+      color: var(--silver);
+      text-align: right;
+      font-weight: 700;
+    }
+
     .form-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -912,82 +943,98 @@
     }
 
     function renderRecent(events) {
-  if (!events.length) {
-    els.recentList.innerHTML = `<div class="note">No tournaments submitted yet.</div>`;
-    return;
-  }
-
-  const fragment = document.createDocumentFragment();
-
-  events.slice(0, 3).forEach(event => {
-    const card = document.createElement("div");
-    card.className = "event-card";
-
-    const results =
-      event.finalResults ||
-      event.results ||
-      event.placements ||
-      [];
-
-    const topFive = Array.isArray(results)
-      ? results.slice(0, 5)
-      : [];
-
-    card.innerHTML = `
-      <strong>
-        ${escapeHtml(displayLevel(event.level))}
-        ·
-        ${escapeHtml(event.location || "Unknown Location")}
-      </strong>
-
-      <span>${escapeHtml(event.eventDate || "No date listed")}</span>
-
-      <span>
-        ${escapeHtml(String(event.bracketCount || 0))}
-        brackets entered
-      </span>
-
-      ${
-        topFive.length
-          ? `
-            <div class="recent-placements">
-              ${topFive.map(player => `
-                <div class="recent-placement-row">
-                  <span class="recent-place">
-                    ${escapeHtml(player.rank || "")}${suffix(Number(player.rank || 0))}
-                  </span>
-
-                  <span class="recent-player">
-                    ${escapeHtml(player.player || player.name || "")}
-                  </span>
-
-                  <span class="recent-points">
-                    ${escapeHtml(
-                      formatPoints(
-                        player.totalPoints ||
-                        player.points ||
-                        0
-                      )
-                    )} pts
-                  </span>
-                </div>
-              `).join("")}
-            </div>
-          `
-          : `
-            <div class="note" style="margin-top:10px;">
-              No final placements listed.
-            </div>
-          `
+      if (!events.length) {
+        els.recentList.innerHTML = `<div class="note">No tournaments submitted yet.</div>`;
+        return;
       }
-    `;
 
-    fragment.appendChild(card);
-  });
+      const fragment = document.createDocumentFragment();
 
-  els.recentList.innerHTML = "";
-  els.recentList.appendChild(fragment);
-}
+      events.slice(0, 3).forEach(event => {
+        const card = document.createElement("div");
+        card.className = "event-card";
+
+        const results =
+          event.finalResults ||
+          event.results ||
+          event.placements ||
+          [];
+
+        const topFive = Array.isArray(results)
+          ? results.slice(0, 5)
+          : [];
+
+        card.innerHTML = `
+          <strong>
+            ${escapeHtml(displayLevel(event.level))}
+            ·
+            ${escapeHtml(event.location || "Unknown Location")}
+          </strong>
+
+          <span>${escapeHtml(event.eventDate || "No date listed")}</span>
+
+          <span>
+            ${escapeHtml(String(event.bracketCount || 0))}
+            brackets entered
+          </span>
+
+          ${
+            topFive.length
+              ? `
+                <div class="recent-placements">
+                  ${topFive.map(player => `
+                    <div class="recent-placement-row">
+                      <span class="recent-place">
+                        ${escapeHtml(player.rank || "")}${suffix(Number(player.rank || 0))}
+                      </span>
+
+                      <span class="recent-player">
+                        ${escapeHtml(player.player || player.name || "")}
+                      </span>
+
+                      <span class="recent-points">
+                        ${escapeHtml(formatPoints(player.totalPoints || player.points || 0))}
+                      </span>
+                    </div>
+                  `).join("")}
+                </div>
+              `
+              : `
+                <div class="note" style="margin-top:10px;">
+                  No final placements listed.
+                </div>
+              `
+          }
+        `;
+
+        fragment.appendChild(card);
+      });
+
+      els.recentList.innerHTML = "";
+      els.recentList.appendChild(fragment);
+    }
+
+    async function loadLeaderboard(level) {
+      currentLeaderLevel = level;
+      els.leaderEbonmarch.classList.toggle("primary", level === "Ebonmarch");
+      els.leaderValkyrie.classList.toggle("primary", level === "Valkyrie");
+
+      if (leaderboardCache[level]) {
+        renderLeaderboard(leaderboardCache[level]);
+        return;
+      }
+
+      els.leaderBody.innerHTML = `<tr><td colspan="9">Loading...</td></tr>`;
+
+      try {
+        const data = await jsonp(API_URL, { action: "leaderboard", level });
+        const players = (data.players || []).slice(0, 10);
+        leaderboardCache[level] = players;
+        renderLeaderboard(players);
+      } catch (err) {
+        els.leaderBody.innerHTML = `<tr><td colspan="9">Could not load leaderboard.</td></tr>`;
+      }
+    }
 
     function renderLeaderboard(players) {
       if (!players.length) {
