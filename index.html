@@ -381,6 +381,7 @@
 
     .leader-tabs {
       display: flex;
+      flex-wrap: wrap;
       gap: 8px;
       margin-bottom: 12px;
     }
@@ -510,6 +511,7 @@
     }
   </style>
 </head>
+
 <body>
   <main class="shell">
     <header class="hero">
@@ -526,6 +528,8 @@
     <nav class="tabs">
       <button class="tab-btn active" data-view="home">Home</button>
       <button class="tab-btn" data-view="entry">Enter Tournament</button>
+      <button class="tab-btn" data-view="tournaments">Tournaments</button>
+      <button class="tab-btn" data-view="categoryResults">Category Results</button>
       <button class="tab-btn" data-view="leaders">Leaderboards</button>
     </nav>
 
@@ -534,7 +538,7 @@
         <div class="panel">
           <div class="panel-head">
             <h2>Most Recent 3 Tournaments</h2>
-            <p>Events are stored for two years. Leaderboards only count the rolling last 12 months.</p>
+            <p>Latest tournaments by event date within the rolling last 12 months.</p>
           </div>
           <div class="panel-body">
             <div id="recentList" class="recent-list">
@@ -552,6 +556,8 @@
           </div>
           <div class="panel-body" style="display:grid;gap:10px;">
             <button class="btn primary" data-jump="entry">Enter New Tournament</button>
+            <button class="btn" data-jump="tournaments" data-tourney-level="Ebonmarch">View Ebonmarch Tournaments</button>
+            <button class="btn" data-jump="tournaments" data-tourney-level="Valkyrie">View Valkyrie Tournaments</button>
             <button class="btn" data-jump="leaders" data-level="Ebonmarch">View Ebonmarch Leaderboard</button>
             <button class="btn" data-jump="leaders" data-level="Valkyrie">View Valkyrie Leaderboard</button>
           </div>
@@ -563,7 +569,7 @@
       <div class="panel">
         <div class="panel-head">
           <h2>Enter Tournament Results</h2>
-          <p>Single Short, Sword and Board, and Flow are required. Open and Greats are optional.</p>
+          <p>Single Short, Flow, and Sword & Board are required. Open and Greats are optional.</p>
         </div>
         <div class="panel-body">
           <div class="form-grid">
@@ -626,6 +632,48 @@
       </div>
     </section>
 
+    <section id="tournaments" class="view">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>12 Month Tournament Results</h2>
+          <p>Shows tournaments by event date within the rolling last 12 months.</p>
+        </div>
+        <div class="panel-body">
+          <div class="leader-tabs">
+            <button id="tourneyEbonmarch" class="btn primary" type="button">Ebonmarch</button>
+            <button id="tourneyValkyrie" class="btn" type="button">Valkyrie</button>
+          </div>
+
+          <div id="tournamentList" class="recent-list">
+            <div class="skeleton"></div>
+            <div class="skeleton"></div>
+            <div class="skeleton"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="categoryResults" class="view">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Category Results</h2>
+          <p>Breakdown of placements by bracket category within the rolling last 12 months.</p>
+        </div>
+
+        <div class="panel-body">
+          <div class="leader-tabs">
+            <button id="categoryEbonmarch" class="btn primary" type="button">Ebonmarch</button>
+            <button id="categoryValkyrie" class="btn" type="button">Valkyrie</button>
+          </div>
+
+          <div id="categoryResultsList" class="brackets">
+            <div class="skeleton"></div>
+            <div class="skeleton"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section id="leaders" class="view">
       <div class="panel">
         <div class="panel-head">
@@ -672,8 +720,8 @@
 
     const BRACKETS = [
       { key: "singleShort", name: "Single Short", required: true },
-      { key: "swordBoard", name: "Sword & Board", required: true },
       { key: "flow", name: "Flow", required: true },
+      { key: "swordBoard", name: "Sword & Board", required: true },
       { key: "open", name: "Open", required: false },
       { key: "greats", name: "Greats", required: false }
     ];
@@ -706,6 +754,8 @@
     window.addEventListener("load", () => {
       requestAnimationFrame(() => {
         loadRecent();
+        loadTournamentHistory("Ebonmarch");
+        loadCategoryResults("Ebonmarch");
         loadLeaderboard("Ebonmarch");
         verifyJsork();
       });
@@ -725,6 +775,12 @@
       els.finalResultsPanel = document.getElementById("finalResultsPanel");
       els.finalResultsBody = document.getElementById("finalResultsBody");
       els.tiebreakerBox = document.getElementById("tiebreakerBox");
+      els.tourneyEbonmarch = document.getElementById("tourneyEbonmarch");
+      els.tourneyValkyrie = document.getElementById("tourneyValkyrie");
+      els.tournamentList = document.getElementById("tournamentList");
+      els.categoryEbonmarch = document.getElementById("categoryEbonmarch");
+      els.categoryValkyrie = document.getElementById("categoryValkyrie");
+      els.categoryResultsList = document.getElementById("categoryResultsList");
     }
 
     function bindEvents() {
@@ -736,13 +792,21 @@
         btn.addEventListener("click", () => {
           showView(btn.dataset.jump);
           if (btn.dataset.level) loadLeaderboard(btn.dataset.level);
+          if (btn.dataset.tourneyLevel) loadTournamentHistory(btn.dataset.tourneyLevel);
         });
       });
 
       els.previewBtn.addEventListener("click", previewFinalResults);
       els.submitBtn.addEventListener("click", submitTournament);
+
       els.leaderEbonmarch.addEventListener("click", () => loadLeaderboard("Ebonmarch"));
       els.leaderValkyrie.addEventListener("click", () => loadLeaderboard("Valkyrie"));
+
+      els.tourneyEbonmarch.addEventListener("click", () => loadTournamentHistory("Ebonmarch"));
+      els.tourneyValkyrie.addEventListener("click", () => loadTournamentHistory("Valkyrie"));
+
+      els.categoryEbonmarch.addEventListener("click", () => loadCategoryResults("Ebonmarch"));
+      els.categoryValkyrie.addEventListener("click", () => loadCategoryResults("Valkyrie"));
 
       document.addEventListener("click", event => {
         if (!event.target.closest(".field")) closeAllSuggestions();
@@ -835,9 +899,7 @@
     async function searchOrkPlayers(query) {
       const key = query.toLowerCase();
 
-      if (playerSearchCache.has(key)) {
-        return playerSearchCache.get(key);
-      }
+      if (playerSearchCache.has(key)) return playerSearchCache.get(key);
 
       if (!window.jsork || !jsork.searchservice || !jsork.searchservice.searchPlayer) {
         return [];
@@ -903,14 +965,12 @@
 
       if (event.key === "ArrowDown") {
         event.preventDefault();
-        const nextIndex = currentIndex < items.length - 1 ? currentIndex + 1 : 0;
-        setActiveSuggestion(items, nextIndex);
+        setActiveSuggestion(items, currentIndex < items.length - 1 ? currentIndex + 1 : 0);
       }
 
       if (event.key === "ArrowUp") {
         event.preventDefault();
-        const nextIndex = currentIndex > 0 ? currentIndex - 1 : items.length - 1;
-        setActiveSuggestion(items, nextIndex);
+        setActiveSuggestion(items, currentIndex > 0 ? currentIndex - 1 : items.length - 1);
       }
 
       if (event.key === "Enter" && currentIndex >= 0) {
@@ -918,9 +978,7 @@
         items[currentIndex].click();
       }
 
-      if (event.key === "Escape") {
-        box.classList.remove("open");
-      }
+      if (event.key === "Escape") box.classList.remove("open");
     }
 
     function setActiveSuggestion(items, index) {
@@ -936,9 +994,23 @@
     async function loadRecent() {
       try {
         const data = await jsonp(API_URL, { action: "recent" });
-        renderRecent(data.events || []);
+        renderRecent((data.events || []).slice(0, 3));
       } catch (err) {
         els.recentList.innerHTML = `<div class="note">Could not load recent tournaments.</div>`;
+      }
+    }
+
+    async function loadTournamentHistory(level) {
+      els.tourneyEbonmarch.classList.toggle("primary", level === "Ebonmarch");
+      els.tourneyValkyrie.classList.toggle("primary", level === "Valkyrie");
+
+      els.tournamentList.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>`;
+
+      try {
+        const data = await jsonp(API_URL, { action: "recent", level });
+        renderTournamentHistory(data.events || []);
+      } catch (err) {
+        els.tournamentList.innerHTML = `<div class="note">Could not load tournament history.</div>`;
       }
     }
 
@@ -948,35 +1020,35 @@
         return;
       }
 
+      renderEventCards(events, els.recentList);
+    }
+
+    function renderTournamentHistory(events) {
+      if (!events.length) {
+        els.tournamentList.innerHTML = `<div class="note">No tournaments found in the last 12 months.</div>`;
+        return;
+      }
+
+      renderEventCards(events, els.tournamentList);
+    }
+
+    function renderEventCards(events, targetEl) {
       const fragment = document.createDocumentFragment();
 
-      events.slice(0, 3).forEach(event => {
+      events.forEach(event => {
         const card = document.createElement("div");
         card.className = "event-card";
 
-        const results =
-          event.finalResults ||
-          event.results ||
-          event.placements ||
-          [];
-
-        const topFive = Array.isArray(results)
-          ? results.slice(0, 5)
-          : [];
+        const results = event.finalResults || event.results || event.placements || [];
+        const topFive = Array.isArray(results) ? results.slice(0, 5) : [];
+        const bracketLine = String(event.bracketCount) === "Historical Final Results"
+          ? "Historical final placements"
+          : `${escapeHtml(String(event.bracketCount || 0))} brackets entered`;
 
         card.innerHTML = `
-          <strong>
-            ${escapeHtml(displayLevel(event.level))}
-            ·
-            ${escapeHtml(event.location || "Unknown Location")}
-          </strong>
-
+          <strong>${escapeHtml(displayLevel(event.level))} · ${escapeHtml(event.location || "Unknown Location")}</strong>
           <span>${escapeHtml(event.eventDate || "No date listed")}</span>
-
-          <span>
-            ${escapeHtml(String(event.bracketCount || 0))}
-            brackets entered
-          </span>
+          <span>${bracketLine}</span>
 
           ${
             topFive.length
@@ -984,34 +1056,93 @@
                 <div class="recent-placements">
                   ${topFive.map(player => `
                     <div class="recent-placement-row">
-                      <span class="recent-place">
-                        ${escapeHtml(player.rank || "")}${suffix(Number(player.rank || 0))}
-                      </span>
-
-                      <span class="recent-player">
-                        ${escapeHtml(player.player || player.name || "")}
-                      </span>
-
-                      <span class="recent-points">
-                        ${escapeHtml(formatPoints(player.totalPoints || player.points || 0))}
-                      </span>
+                      <span class="recent-place">${escapeHtml(player.rank || "")}${suffix(Number(player.rank || 0))}</span>
+                      <span class="recent-player">${escapeHtml(player.player || player.name || "")}</span>
+                      <span class="recent-points">${escapeHtml(formatPoints(player.totalPoints || player.points || 0))}</span>
                     </div>
                   `).join("")}
                 </div>
               `
-              : `
-                <div class="note" style="margin-top:10px;">
-                  No final placements listed.
-                </div>
-              `
+              : `<div class="note" style="margin-top:10px;">No final placements listed.</div>`
           }
         `;
 
         fragment.appendChild(card);
       });
 
-      els.recentList.innerHTML = "";
-      els.recentList.appendChild(fragment);
+      targetEl.innerHTML = "";
+      targetEl.appendChild(fragment);
+    }
+
+    async function loadCategoryResults(level) {
+      els.categoryEbonmarch.classList.toggle("primary", level === "Ebonmarch");
+      els.categoryValkyrie.classList.toggle("primary", level === "Valkyrie");
+
+      els.categoryResultsList.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
+
+      try {
+        const data = await jsonp(API_URL, { action: "categoryResults", level });
+        renderCategoryResults(data.categories || []);
+      } catch (err) {
+        els.categoryResultsList.innerHTML = `<div class="note">Could not load category results.</div>`;
+      }
+    }
+
+    function renderCategoryResults(categories) {
+      if (!categories.length) {
+        els.categoryResultsList.innerHTML = `<div class="note">No category results found.</div>`;
+        return;
+      }
+
+      const fragment = document.createDocumentFragment();
+
+      categories.forEach(category => {
+        const card = document.createElement("div");
+        card.className = "bracket-card";
+
+        card.innerHTML = `
+          <div class="bracket-head">
+            <h3>${escapeHtml(category.bracket)}</h3>
+            <span class="optional-tag">${escapeHtml(String(category.events || 0))} events</span>
+          </div>
+
+          <div class="panel-body">
+            <div class="leader-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Place</th>
+                    <th>Player</th>
+                    <th>Points</th>
+                    <th>Event Date</th>
+                    <th>Location</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${
+                    category.results && category.results.length
+                      ? category.results.map(row => `
+                        <tr>
+                          <td>${escapeHtml(row.placement)}${suffix(Number(row.placement))}</td>
+                          <td>${escapeHtml(row.player)}</td>
+                          <td>${escapeHtml(formatPoints(row.points))}</td>
+                          <td>${escapeHtml(row.eventDate)}</td>
+                          <td>${escapeHtml(row.location)}</td>
+                        </tr>
+                      `).join("")
+                      : `<tr><td colspan="5">No results listed.</td></tr>`
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+
+        fragment.appendChild(card);
+      });
+
+      els.categoryResultsList.innerHTML = "";
+      els.categoryResultsList.appendChild(fragment);
     }
 
     async function loadLeaderboard(level) {
@@ -1349,6 +1480,8 @@
         showMessage("Tournament submitted successfully.", "good");
         clearEntryForm();
         await loadRecent();
+        await loadTournamentHistory(level);
+        await loadCategoryResults(level);
         await loadLeaderboard(level);
         showView("home");
       } catch (err) {
