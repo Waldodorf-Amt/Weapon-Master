@@ -711,6 +711,7 @@
   </main>
 
   <script defer src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script defer src="ebonmarch-player-cache.js"></script>
   <script defer src="jsork.js"></script>
 
   <script defer>
@@ -814,10 +815,17 @@
     }
 
     function verifyJsork() {
-      if (window.jsork && jsork.searchservice && jsork.searchservice.searchPlayer) {
+      const localReady = Array.isArray(window.EBONMARCH_PLAYER_CACHE);
+      const jsorkReady = window.jsork && jsork.searchservice && jsork.searchservice.searchPlayer;
+
+      if (localReady && jsorkReady) {
+        setStatus("ready", "Ready · Ebonmarch cache + ORK search active");
+      } else if (localReady) {
+        setStatus("ready", "Ready · Ebonmarch cache active");
+      } else if (jsorkReady) {
         setStatus("ready", "Ready · ORK search active");
       } else {
-        setStatus("ready", "Ready · ORK search unavailable");
+        setStatus("ready", "Ready · player search unavailable");
       }
     }
 
@@ -879,13 +887,13 @@
         }
 
         box.classList.add("open");
-        box.innerHTML = `<button class="suggestion-item" type="button"><span class="suggestion-name">Searching ORK...</span></button>`;
+        box.innerHTML = `<button class="suggestion-item" type="button"><span class="suggestion-name">Searching players...</span></button>`;
 
         try {
           const players = await searchOrkPlayers(query);
           renderSuggestions(input, box, players);
         } catch (err) {
-          box.innerHTML = `<button class="suggestion-item" type="button"><span class="suggestion-name">No ORK results available</span><span class="suggestion-meta">Manual entry is still allowed</span></button>`;
+          box.innerHTML = `<button class="suggestion-item" type="button"><span class="suggestion-name">No player results available</span><span class="suggestion-meta">Manual entry is still allowed</span></button>`;
         }
       }, 280);
 
@@ -899,16 +907,51 @@
     async function searchOrkPlayers(query) {
       const key = query.toLowerCase();
 
-      if (playerSearchCache.has(key)) return playerSearchCache.get(key);
+      if (playerSearchCache.has(key)) {
+        return playerSearchCache.get(key);
+      }
+
+      const localPlayers = searchLocalPlayerCache(query);
+
+      if (localPlayers.length) {
+        playerSearchCache.set(key, localPlayers);
+        return localPlayers;
+      }
 
       if (!window.jsork || !jsork.searchservice || !jsork.searchservice.searchPlayer) {
+        playerSearchCache.set(key, []);
         return [];
       }
 
       const raw = await jsork.searchservice.searchPlayer(query);
       const players = normalizeOrkPlayers(raw).slice(0, 12);
+
       playerSearchCache.set(key, players);
       return players;
+    }
+
+    function searchLocalPlayerCache(query) {
+      const q = String(query || "").trim().toLowerCase();
+
+      if (!q || !Array.isArray(window.EBONMARCH_PLAYER_CACHE)) {
+        return [];
+      }
+
+      return window.EBONMARCH_PLAYER_CACHE
+        .filter(player => {
+          const name = String(player.name || player.player || player.Persona || "").toLowerCase();
+          const park = String(player.park || player.Park || "").toLowerCase();
+          const kingdom = String(player.kingdom || player.Kingdom || "").toLowerCase();
+
+          return name.includes(q) || park.includes(q) || kingdom.includes(q);
+        })
+        .map(player => ({
+          name: player.name || player.player || player.Persona || "",
+          park: player.park || player.Park || "",
+          kingdom: player.kingdom || player.Kingdom || "Ebonmarch"
+        }))
+        .filter(player => player.name)
+        .slice(0, 12);
     }
 
     function normalizeOrkPlayers(raw) {
